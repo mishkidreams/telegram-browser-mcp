@@ -9,11 +9,12 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-24.04, macos-14]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     env:
       PLAYWRIGHT_SKIP_BROWSER_GC: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -21,6 +22,28 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Install matching test browser and native dependencies
         run: npx playwright install --with-deps --no-shell chromium
+      - name: Allow the managed Chromium sandbox on this ephemeral Ubuntu runner
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          # Ubuntu 24.04 blocks user namespaces for downloaded Chromium. Allow
+          # only this exact test binary; never disable the browser sandbox or
+          # the host-wide AppArmor namespace restriction.
+          CHROME_PATH="$(node --input-type=module -e "import { chromium } from 'playwright'; console.log(chromium.executablePath())")"
+          sudo tee /etc/apparmor.d/telegram-mcp-ci-chromium > /dev/null <<EOF
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile telegram-mcp-ci-chromium "$CHROME_PATH" flags=(unconfined) {
+            userns,
+          }
+          EOF
+          sudo apparmor_parser -r /etc/apparmor.d/telegram-mcp-ci-chromium
+      - name: Report synthetic Windows fixture ownership context without account details
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+          Write-Output ('DefaultWindowsOwnerIsCurrentUser=' + ($identity.Owner.Value -eq $identity.User.Value))
       - name: Test Windows and macOS
         if: runner.os != 'Linux'
         run: npm test

@@ -6,7 +6,8 @@ import { createChatReader } from '../src/chat-reader.mjs';
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lH8AAAAASUVORK5CYII=';
 async function fixture(t, { file = false, album = false, protectedPhoto = false, external = false, large = false, flip = false, wrongList = false, unknownSize = false, spoiler = false, lazy = false, deferred = false, intersection = false } = {}) {
   const browser = await chromium.launch({channel:'chromium',headless:true,chromiumSandbox:true});
-  t.after(() => browser.close());
+  const close = () => browser.close();
+  t.after(close);
   const context = await browser.newContext({acceptDownloads:false});
   const page = await context.newPage();
   const photo = id => `<div class="media-inner interactive"${album ? ` id="album-media-message-${id}"` : ''}>${deferred || intersection ? '<canvas class="thumbnail"></canvas>' : '<img class="full-media">'}${lazy ? '<i class="icon-download"></i>' : ''}${spoiler ? '<div class="media-spoiler" style="height:20px;width:20px"></div>' : ''}${protectedPhoto ? '<span class="protector"></span>' : ''}</div>`;
@@ -41,7 +42,7 @@ Object.defineProperty(document.querySelector('#LeftColumn'),'textContent',{get()
 document.querySelector('#composer').oninput=()=>{throw Error('COMPOSER-TOUCHED')};
 </script>`;
   await context.route('**/*',route=>route.request().url().startsWith('https://web.telegram.org/a/')?route.fulfill({contentType:'text/html',body:html}):route.abort());
-  return {page, reader:createChatReader(page,{allowedChatIds:['321'],timeoutMs:4000})};
+  return {page, reader:createChatReader(page,{allowedChatIds:['321'],timeoutMs:4000}), close};
 }
 
 test('photos have exact message references and return real bounded raster bytes, not a page screenshot',async t=>{
@@ -88,13 +89,17 @@ test('a scope change during an offscreen photo native load fails closed without 
 
 test('protected or spoiler-covered offscreen photos are rejected before native loading is triggered',async t=>{
   for(const options of [{protectedPhoto:true},{spoiler:true}]){
-    const {reader,page}=await fixture(t,{intersection:true,...options});
-    await assert.rejects(reader.attachment({chatId:'321',messageId:'41',attachmentIndex:0}),/MEDIA_UNSUPPORTED/);
-    assert.equal(await page.evaluate(()=>{
-      const list=document.querySelector('.MessageList'),media=list.querySelector('.media-inner');
-      return media.getBoundingClientRect().bottom<list.getBoundingClientRect().top-500;
-    }),true);
-    assert.equal(await page.evaluate(()=>window.clicks),0);
+    const {reader,page,close}=await fixture(t,{intersection:true,...options});
+    try {
+      await assert.rejects(reader.attachment({chatId:'321',messageId:'41',attachmentIndex:0}),/MEDIA_UNSUPPORTED/);
+      assert.equal(await page.evaluate(()=>{
+        const list=document.querySelector('.MessageList'),media=list.querySelector('.media-inner');
+        return media.getBoundingClientRect().bottom<list.getBoundingClientRect().top-500;
+      }),true);
+      assert.equal(await page.evaluate(()=>window.clicks),0);
+    } finally {
+      await close();
+    }
   }
 });
 
@@ -118,8 +123,12 @@ test('native file downloads never enable browser disk writes and return only bou
 
 test('protected/external/missing/oversized/unknown-size attachments and changed scopes fail closed',async t=>{
   for(const options of [{protectedPhoto:true},{spoiler:true},{external:true},{file:true,large:true},{file:true,unknownSize:true},{file:true,flip:true},{wrongList:true}]){
-    const {reader}=await fixture(t,options);
-    await assert.rejects(reader.attachment({chatId:'321',messageId:'41',attachmentIndex:0}),/MEDIA_UNSUPPORTED|ATTACHMENT_UNAVAILABLE|DOWNLOAD_TOO_LARGE|ATTACHMENT_SIZE_UNKNOWN|READ_TARGET_CHANGED|CLIENT_CHANGED/);
+    const {reader,close}=await fixture(t,options);
+    try {
+      await assert.rejects(reader.attachment({chatId:'321',messageId:'41',attachmentIndex:0}),/MEDIA_UNSUPPORTED|ATTACHMENT_UNAVAILABLE|DOWNLOAD_TOO_LARGE|ATTACHMENT_SIZE_UNKNOWN|READ_TARGET_CHANGED|CLIENT_CHANGED/);
+    } finally {
+      await close();
+    }
   }
   const {reader,page}=await fixture(t);
   await assert.rejects(reader.attachment({chatId:'999',messageId:'41',attachmentIndex:0}),/ACCESS_DENIED/);

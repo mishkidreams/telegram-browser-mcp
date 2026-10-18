@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile, access } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +16,8 @@ test('configured stdio entry reads MCP env, ignores hidden policy files and open
   const data = join(root, 'data'), downloads = join(root, 'downloads');
   // These accidental inherited values must NOT become settings in --config mode.
   const inherited = { TG_ALLOWED_CHAT_IDS: '999', TG_PROXY: 'not-a-proxy', TG_BROWSER: 'arbitrary.exe', TG_PROFILE_DIR: '../wrong' };
-  await mkdir(join(data, 'private'), { recursive: true });
+  // Model app-created storage, not the token-dependent owner of plain mkdir.
+  await ensurePrivateDirectory(join(data, 'private'));
   await writeFile(join(data, 'private/reader-policy.json'), JSON.stringify({ allowedChatIds: ['999'] }));
   await writeFile(join(data, 'private/config.json'), JSON.stringify({ accidentalSecret: 'LEGACY-SECRET' }));
   const path = join(root, 'mcp.json');
@@ -32,7 +33,7 @@ test('configured stdio entry reads MCP env, ignores hidden policy files and open
   await client.connect(transport);
   assert.equal((await client.listTools()).tools.length, 10);
   assert.equal(client.getServerVersion().name, 'telegram-browser-mcp');
-  assert.equal(client.getServerVersion().version, '0.8.2');
+  assert.equal(client.getServerVersion().version, '0.8.3');
   const result = await client.callTool({ name: 'list_allowed_chats', arguments: {} });
   assert.deepEqual(JSON.parse(result.content[0].text).allowedChatIds, ['321', '-100123']);
   const denied = await client.callTool({ name: 'get_recent_messages', arguments: { chatId: '999' } });

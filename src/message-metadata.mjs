@@ -194,6 +194,9 @@ export async function enrichMessageMetadata(page, result) {
       if (locale && locale.length <= 50) {
         for (const hourCycle of ['h23', 'h12']) {
           try {
+            // A valid but unsupported tag silently uses the browser default;
+            // its matching roundtrip does not prove the native UI locale.
+            if (Intl.DateTimeFormat.supportedLocalesOf(locale).length !== 1) continue;
             const formatter = new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle });
             if (formatter.resolvedOptions().calendar !== 'gregory') continue;
             const digits = Array.from({ length: 10 }, (_, i) => new Intl.NumberFormat(locale, { useGrouping: false }).format(i));

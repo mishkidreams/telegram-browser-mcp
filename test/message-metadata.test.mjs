@@ -6,10 +6,10 @@ const { enrichMessageMetadata, normalizeMessageEvidence } = metadata;
 
 // Public seams agreed in the task: enrichment on a routed official-origin DOM,
 // and the metadata egress whitelist. No auth, persistent profile or Telegram I/O.
-async function fixture(t, { title = 'Mar 25, 2026, 11:42:09', lang = 'en', timeZone = 'Europe/Moscow', hash = '#321', headerPeer = '321', listKey = '321_-1_thread', body, origin = 'https://web.telegram.org/a/' } = {}) {
+async function fixture(t, { title = 'Mar 25, 2026, 11:42:09', lang = 'en', timeZone = 'Europe/Moscow', browserLocale, hash = '#321', headerPeer = '321', listKey = '321_-1_thread', body, origin = 'https://web.telegram.org/a/' } = {}) {
   const browser = await chromium.launch({ channel: 'chromium', headless: true, chromiumSandbox: true });
   t.after(() => browser.close());
-  const context = await browser.newContext({ timezoneId: timeZone });
+  const context = await browser.newContext({ timezoneId: timeZone, locale: browserLocale });
   const page = await context.newPage();
   const row = body ?? `<div class="Message" data-message-id="7"><div class="bottom-marker" data-message-id="7"></div><div class="message-content-wrapper"><div class="message-content"><div class="content-inner"><div class="message-title"><span class="message-title-name-container"><span class="message-title-name"><span class="sender-title">Native Sender</span></span></span></div><div class="text-content">message body<span class="MessageMeta"><span class="message-time" title="${title}">11:42</span></span></div></div></div></div></div>`;
   const html = `<!doctype html><html lang="${lang}"><body><div id="LeftColumn">UNRELATED SIDEBAR</div><div id="MiddleColumn"><div class="MiddleHeader"><div class="chat-info-wrapper"><div class="Avatar" data-peer-id="${headerPeer}"></div></div></div><div class="MessageList" data-list-key="${listKey}">${row}</div><div class="Composer">PRIVATE COMPOSER</div></div></body></html>`;
@@ -156,11 +156,31 @@ test('localized native titles roundtrip exactly; creation time is never edited/f
     ['en', 'Edited: Mar 25, 2026, 11:42:09', null],
     ['', 'Mar 25, 2026, 11:42:09', null],
     ['zz-invalid', 'Mar 25, 2026, 11:42:09', null],
+    ['not_a_locale', 'Mar 25, 2026, 11:42:09', null],
   ];
   for (const [lang, title, expected] of cases) {
     await page.evaluate(({ lang, title }) => { document.documentElement.lang = lang; document.querySelector('.message-time').title = title; }, { lang, title });
     assert.equal((await enrichMessageMetadata(page, result())).messages[0].timestamp, expected, `${lang}: ${title}`);
   }
+});
+
+test('unsupported locale cannot parse a title from the browser default locale', async t => {
+  const page = await fixture(t, { lang: 'zz-invalid', browserLocale: 'en-US' });
+  // A structurally valid but unsupported tag silently falls back, not throws.
+  // Pin the browser default so this repro does not depend on the host OS locale.
+  assert.deepEqual(await page.evaluate(() => ({
+    canonical: Intl.getCanonicalLocales('zz-invalid'),
+    supported: Intl.DateTimeFormat.supportedLocalesOf('zz-invalid'),
+    fallback: new Intl.DateTimeFormat('zz-invalid').resolvedOptions().locale,
+    defaultLocale: Intl.DateTimeFormat().resolvedOptions().locale,
+  })), { canonical: ['zz-invalid'], supported: [], fallback: 'en-US', defaultLocale: 'en-US' });
+  const message = (await enrichMessageMetadata(page, result())).messages[0];
+  assert.equal(message.timestamp, null);
+  assert.equal(message.timestampSource, null);
+  assert.equal(message.timeZone, 'Europe/Moscow');
+  // The same exact title remains valid when the native UI locale is supported.
+  await page.evaluate(() => { document.documentElement.lang = 'en-US'; });
+  assert.equal((await enrichMessageMetadata(page, result())).messages[0].timestamp, '2026-03-25T08:42:09.000Z');
 });
 
 test('repeated DST wall times and nonexistent DST wall times remain unknown', async t => {

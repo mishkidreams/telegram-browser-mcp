@@ -2,7 +2,7 @@
 
 Unofficial local **read-only MCP for Telegram Web A**: selected chats, history, native search, post comments, photos/files, deterministic multi-chat collection, message context and persistent local conversation history. No Telegram API registration. Your authorized dedicated browser profile stays on your computer.
 
-Version **0.8.2**, MIT licensed, source distribution only. The 0.8.1 reader has Windows real-account coverage; 0.8.2 adds a sanitized CLI bootstrap and public documentation, with synthetic regression coverage. Linux/macOS need real OS and human-login validation. This is a DOM-based adapter, not a promise that every changing Telegram layout works. Service permissions and participant privacy/consent remain the operator’s responsibility.
+Version **0.8.3**, MIT licensed, source distribution only. The 0.8.1 reader has Windows real-account coverage; public releases add a sanitized CLI bootstrap, documentation and strict rejection of unsupported timestamp locales. [CI](https://github.com/mishkidreams/telegram-browser-mcp/actions) exercises synthetic fixtures on Windows, Ubuntu and macOS; check the actual run status. Synthetic CI is not real-account or human-login validation on Linux/macOS. This is a DOM-based adapter, not a promise that every changing Telegram layout works. Service permissions and participant privacy/consent remain the operator’s responsibility.
 
 ## Documentation
 
@@ -33,6 +33,8 @@ npm run install-browser
 ```
 
 Managed Chromium is pinned to Playwright. Serving MCP never downloads a browser or updates dependencies. On supported Linux distributions, explicitly install native dependencies with `npx playwright install-deps chromium`; the human login window needs a display server.
+
+Run the server as your normal OS user. Existing storage targets must belong to that user; the server refuses foreign-owned targets rather than taking ownership. On Ubuntu 23.10+ a downloaded Chromium can be blocked by AppArmor user-namespace policy even after dependencies are installed. Keep the Chromium sandbox enabled: use an administrator-reviewed policy for the exact managed browser, or a supported installed Chrome with its own dedicated profile. See [Chromium’s explanation](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md). The repository CI grants the exact test executable permission only on its disposable runner; the application never changes host policies or adds `--no-sandbox`.
 
 ## Minimal MCP settings: two fields
 

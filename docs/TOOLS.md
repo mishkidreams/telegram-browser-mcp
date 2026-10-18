@@ -1,6 +1,6 @@
 # Tool and result contract
 
-This document describes version 0.8.2. The MCP `tools/list` JSON schemas are the executable contract; unknown fields are rejected. Transport is local stdio, not a public HTTP service.
+This document describes version 0.8.3. The MCP `tools/list` JSON schemas are the executable contract; unknown fields are rejected. Transport is local stdio, not a public HTTP service.
 
 ## Targets and authorization
 

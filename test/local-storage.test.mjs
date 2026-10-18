@@ -78,6 +78,38 @@ try {
   catch { throw new Error('WINDOWS_TEST_METADATA_FAILED'); }
 }
 
+// Elevated Windows tokens can default new objects to a group owner. These
+// synthetic entries are meant to be current-user owned. Change only Owner:
+// leave their existing DACLs (including inherited/permissive grants) intact.
+async function windowsSetCurrentOwner(entries) {
+  const before = await windowsMetadata(entries);
+  await windowsScript(String.raw`
+$ErrorActionPreference = 'Stop'
+try {
+    $current = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+    $sections = [System.Security.AccessControl.AccessControlSections]::Owner
+    foreach ($entry in (ConvertFrom-Json $env:TELEGRAM_STORAGE_TEST_PATHS)) {
+        $attributes = [System.IO.File]::GetAttributes($entry)
+        if (($attributes -band [System.IO.FileAttributes]::Directory) -ne 0) {
+            $acl = [System.IO.Directory]::GetAccessControl($entry, $sections)
+            $acl.SetOwner($current)
+            [System.IO.Directory]::SetAccessControl($entry, $acl)
+        } else {
+            $acl = [System.IO.File]::GetAccessControl($entry, $sections)
+            $acl.SetOwner($current)
+            [System.IO.File]::SetAccessControl($entry, $acl)
+        }
+    }
+} catch { [Console]::Out.Write('TEST_FAILED'); exit 1 }
+`, { TELEGRAM_STORAGE_TEST_PATHS: JSON.stringify(entries) });
+  const after = await windowsMetadata(entries);
+  for (let index = 0; index < entries.length; index++) {
+    assert.equal(after[index].ownerIsCurrent, true);
+    assert.deepEqual(after[index].rules, before[index].rules);
+    assert.equal(after[index].protected, before[index].protected);
+  }
+}
+
 function assertWindowsPrivate(metadata, { inherited = false, file = false } = {}) {
   assert.equal(metadata.ownerIsCurrent, true);
   assert.equal(metadata.protected, !inherited);
@@ -118,10 +150,16 @@ test('existing ordinary storage preserves its contents and leaves existing ances
   const target = path.join(parent, 'storage');
   await fs.mkdir(target, { recursive: true });
   await fs.writeFile(path.join(target, 'fixture.txt'), 'owned fixture bytes');
-  const before = windows ? await windowsMetadata([parent]) : (await fs.stat(parent)).mode;
+  const before = windows ? await windowsMetadata([root, parent]) : (await fs.stat(parent)).mode;
+  if (windows) {
+    await windowsSetCurrentOwner([target]);
+    const [ordinary] = await windowsMetadata([target]);
+    assert.equal(ordinary.protected, false);
+    assert.equal(ordinary.rules.some(rule => rule.inherited), true);
+  }
   assert.equal(await ensurePrivateDirectory(target), target);
   assert.equal(await fs.readFile(path.join(target, 'fixture.txt'), 'utf8'), 'owned fixture bytes');
-  const after = windows ? await windowsMetadata([parent]) : (await fs.stat(parent)).mode;
+  const after = windows ? await windowsMetadata([root, parent]) : (await fs.stat(parent)).mode;
   assert.deepEqual(after, before);
 });
 
@@ -213,10 +251,27 @@ test('POSIX incompatible ownership is rejected before permissions change', { ski
   assert.equal((await fs.stat(target)).mode & 0o7777, 0o755);
 });
 
+test('Windows a foreign default owner is rejected before changing permissions', { skip: !windows }, async t => {
+  const root = await fixture(t);
+  const target = path.join(root, 'storage');
+  await fs.mkdir(target);
+  const before = await windowsMetadata([target]);
+  // Standard-user Windows normally defaults to the current user; elevated
+  // runners may default to a group. Never take ownership in this rejection case.
+  if (before[0].ownerIsCurrent) {
+    t.skip('the current token defaults ordinary directories to the current user');
+    return;
+  }
+  await rejectsFixed(ensurePrivateDirectory(target));
+  assert.deepEqual(await windowsMetadata([target]), before);
+});
+
 test('Windows replaces unrelated explicit grants and protects inheritable user/SYSTEM DACLs', { skip: !windows }, async t => {
   const root = await fixture(t);
   const target = path.join(root, 'storage');
   await fs.mkdir(target);
+  const ancestors = await windowsMetadata([root]);
+  await windowsSetCurrentOwner([target]);
   await windowsScript(String.raw`
 $ErrorActionPreference = 'Stop'
 try {
@@ -236,6 +291,10 @@ try {
   const file = path.join(child, 'fixture.txt');
   await fs.mkdir(child);
   await fs.writeFile(file, 'owned fixture bytes');
+  // DACL inheritance does not control the creating token's default owner.
+  // Normalize only these synthetic owners; the helper checks DACLs are intact.
+  await windowsSetCurrentOwner([child, file]);
+  assert.deepEqual(await windowsMetadata([root]), ancestors);
   const [secured, inheritedDirectory, inheritedFile] = await windowsMetadata([target, child, file]);
   assertWindowsPrivate(secured);
   assertWindowsPrivate(inheritedDirectory, { inherited: true });
