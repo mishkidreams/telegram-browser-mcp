@@ -12,6 +12,18 @@ Version **0.8.3**, MIT licensed, source distribution only. The 0.8.1 reader has 
 - [Security and privacy](SECURITY.md): what read-only does and does not guarantee.
 - [Contributing](CONTRIBUTING.md): synthetic tests and safe maintenance.
 
+## Platform validation status
+
+**Windows is the validated platform for this release. Linux/macOS remain experimental, not a supported fresh-login promise.** The [0.8.3 code validation run](https://github.com/mishkidreams/telegram-browser-mcp/actions/runs/39154482658), at code commit `9748c74d4004b1a010a4cb6b0ad20c5508e1ee28`, reported:
+
+| Platform | Synthetic result | Remaining boundary |
+| --- | --- | --- |
+| Windows hosted runner | 214 passed, 2 platform skips, 0 failed | Real-account evidence is the Windows 0.8.1 reader; no new real login is claimed for 0.8.3. |
+| Ubuntu 24.04 | 211 passed, 4 platform skips, 1 failed | Sandbox launches after the exact CI-only AppArmor permission, but the headed human-viewer startup test fails with `OPERATOR_WINDOW_FAILED`. |
+| macOS 14 | 210 passed, 4 platform skips, 2 failed | Initial-route latest confirmation and one fail-closed history fixture failed; causes are not established. Real login is unverified. |
+
+Separately, the local Windows full suite passed 213 tests with 3 environment/platform skips and 0 failures. The release documentation records these failures instead of masking them with disabled sandboxing, weaker assertions or an all-platform compatibility claim. A documentation-only follow-up does not change the code tested in the linked run.
+
 ## Requirements
 
 Node.js 22+, Git, an explicit supported proxy, and a desktop/display for the one-time local login. Normal reads are headless. Each computer gets its own login; no Telegram app API keys or Pi extension are required.
