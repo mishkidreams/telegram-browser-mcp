@@ -1,0 +1,31 @@
+name: checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_GC: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Install matching test browser and native dependencies
+        run: npx playwright install --with-deps --no-shell chromium
+      - name: Test Windows and macOS
+        if: runner.os != 'Linux'
+        run: npm test
+      - name: Test Linux with virtual display for the human-viewer fixture
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum npm test
+      - name: Inspect publish allowlist
+        run: npm pack --dry-run --ignore-scripts

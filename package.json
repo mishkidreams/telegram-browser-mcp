@@ -1,0 +1,25 @@
+{
+  "name": "telegram-browser-mcp",
+  "version": "0.8.2",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Read-only Telegram Web MCP with an explicit chat allowlist, persistent browser profile and local human login.",
+  "bin": { "telegram-browser-mcp": "src/cli.mjs" },
+  "files": ["src/", "web/", "README.md", "SECURITY.md", "LICENSE", "docs/", "CONTRIBUTING.md"],
+  "repository": { "type": "git", "url": "git+https://github.com/mishkidreams/telegram-browser-mcp.git" },
+  "bugs": { "url": "https://github.com/mishkidreams/telegram-browser-mcp/issues" },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/cli.mjs serve",
+    "login": "node src/cli.mjs login",
+    "install-browser": "node src/cli.mjs install-browser",
+    "test": "node --test --test-concurrency=1"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "playwright": "1.64.1",
+    "ws": "8.22.0",
+    "zod": "4.3.6"
+  }
+}
